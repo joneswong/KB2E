@@ -72,7 +72,7 @@ class Test{
 
 
     vector<int> h,l,r;
-    vector<int> fb_h,fb_l,fb_r;
+    vector<int> fb_h,fb_l,fb_r, fb_lb;
     map<pair<int,int>, map<int,int> > ok;
     double res ;
 public:
@@ -85,6 +85,23 @@ public:
         	fb_l.push_back(y);
         }
         ok[make_pair(x,z)][y]=1;
+    }
+
+    //for triplet classification
+    int cardinality_of_testset;
+
+    void add_labeled_triplet(int x, int y, int z, int lb, bool flag)
+    {
+        if (flag)
+    	{
+        	fb_h.push_back(x);
+        	fb_r.push_back(z);
+        	fb_l.push_back(y);
+                fb_lb.push_back(lb);
+        }
+        if (lb) {
+            ok[make_pair(x,z)][y]=1;
+        }
     }
 
     int rand_max(int x)
@@ -220,10 +237,109 @@ public:
 		cout<<"right:"<<rsum/fb_r.size()<<'\t'<<rp_n/fb_r.size()<<'\t'<<rsum_filter/fb_r.size()<<'\t'<<rp_n_filter/fb_r.size()<<endl;
     }
 
+    //for triplet classification
+    void run_triplet_classification() {
+        FILE* f1 = fopen(("relation2vec."+version).c_str(),"r");
+        FILE* f3 = fopen(("entity2vec."+version).c_str(),"r");
+        cout<<relation_num<<' '<<entity_num<<endl;
+        int relation_num_fb=relation_num;
+        relation_vec.resize(relation_num_fb);
+        for (int i=0; i<relation_num_fb;i++)
+        {
+            relation_vec[i].resize(n);
+            for (int ii=0; ii<n; ii++)
+                fscanf(f1,"%lf",&relation_vec[i][ii]);
+        }
+        entity_vec.resize(entity_num);
+        for (int i=0; i<entity_num;i++)
+        {
+            entity_vec[i].resize(n);
+            for (int ii=0; ii<n; ii++)
+                fscanf(f3,"%lf",&entity_vec[i][ii]);
+            if (vec_len(entity_vec[i])-1>1e-3)
+            	cout<<"wrong_entity"<<i<<' '<<vec_len(entity_vec[i])<<endl;
+        }
+        fclose(f1);
+        fclose(f3);
+
+        //determine thresholds according to valid set
+        map<int,vector<pair<int,double> > > a;
+        map<int, double> classifier;
+        for (int testid = this->cardinality_of_testset; testid<fb_l.size(); testid+=1)
+        {
+			int h = fb_h[testid];
+			int l = fb_l[testid];
+			int rel = fb_r[testid];
+                        int lb = fb_lb[testid];
+			double tmp = calc_sum(h,l,rel);
+
+                        a[rel].push_back(make_pair(lb, tmp));
+        }
+        for (map<int, vector<pair<int, double> > >::iterator it = a.begin(); it != a.end(); ++it) {
+            int rel = it->first;
+            vector<pair<int,double> >& value = it->second;
+            sort(value.begin(), value.end(),cmp);
+            int num_of_positive_triplets = 0;
+            int num_of_triplets = value.size();
+            for (vector<pair<int,double> >::iterator pair_it = value.begin(); pair_it != value.end(); ++pair_it) {
+                if (pair_it->first) {
+                    num_of_positive_triplets++;
+                }
+            }
+            double threshold = 0;
+            int num_of_recalled_positive = 0;
+            int num_of_correct = num_of_triplets - num_of_positive_triplets;
+            for (int i = 0; i < num_of_triplets; ++i) {
+                if (value[i].first) {
+                    num_of_recalled_positive++;
+                }
+                int cur_num_of_correct = num_of_recalled_positive + (num_of_triplets-num_of_positive_triplets-(i+1-num_of_recalled_positive));
+                if (num_of_correct < cur_num_of_correct) {
+                    num_of_correct = cur_num_of_correct;
+                    if (i + 1 == num_of_triplets) {
+                        threshold = value[i].second + 1e-7;
+                    } else {
+                        threshold = (value[i].second + value[i+1].second) / 2;
+                    }
+                }
+            }
+            classifier[rel] = threshold;
+        }
+
+        //classify test triplets by the thresholds
+        a.clear();
+        for (int testid = 0; testid < this->cardinality_of_testset; testid+=1)
+        {
+			int h = fb_h[testid];
+			int l = fb_l[testid];
+			int rel = fb_r[testid];
+                        int lb = fb_lb[testid];
+			double tmp = calc_sum(h,l,rel);
+
+                        a[rel].push_back(make_pair(lb, tmp));
+        }
+        int num_of_considered = 0;
+        int num_of_correct = 0;
+        for (map<int, vector<pair<int,double> > >::iterator it = a.begin(); it != a.end(); ++it) {
+            int rel = it->first;
+            map<int, double>::iterator cit = classifier.find(rel);
+            if (cit != classifier.end()) {
+                double sep = cit->second;
+                for(vector<pair<int,double> >::iterator pit = it->second.begin(); pit != it->second.end(); ++pit) {
+                    num_of_considered++;
+                    if ((pit->first != 0 && pit->second < sep) || (pit->first == 0 && pit->second >= sep)) {
+                        num_of_correct++;
+                    }
+                }
+            }
+        }
+
+        cout << num_of_correct << "\t" << num_of_considered << "\t" << (double)num_of_correct / (double)num_of_considered << endl;
+    }
 };
 Test test;
 
-void prepare()
+void prepare(int has_fourth_column)
 {
     FILE* f1 = fopen("../data/entity2id.txt","r");
 	FILE* f2 = fopen("../data/relation2id.txt","r");
@@ -244,6 +360,7 @@ void prepare()
 		relation_num++;
 	}
     FILE* f_kb = fopen("../data/test.txt","r");
+    test.cardinality_of_testset = 0;
 	while (fscanf(f_kb,"%s",buf)==1)
     {
         string s1=buf;
@@ -265,7 +382,20 @@ void prepare()
             relation2id[s3] = relation_num;
             relation_num++;
         }
-        test.add(entity2id[s1],entity2id[s2],relation2id[s3],true);
+        
+        //for triplet classification
+        if (has_fourth_column) {
+            fscanf(f_kb, "%s", buf);
+            string s4 = buf;
+            if (s4.compare("true")==0) {
+                test.add_labeled_triplet(entity2id[s1],entity2id[s2],relation2id[s3],1,true);
+            } else {
+                test.add_labeled_triplet(entity2id[s1],entity2id[s2],relation2id[s3],0,true);
+            }
+        } else {
+            test.add(entity2id[s1],entity2id[s2],relation2id[s3],true);
+        }
+        test.cardinality_of_testset++;
     }
     fclose(f_kb);
     FILE* f_kb1 = fopen("../data/train.txt","r");
@@ -318,7 +448,19 @@ void prepare()
             relation2id[s3] = relation_num;
             relation_num++;
         }
-        test.add(entity2id[s1],entity2id[s2],relation2id[s3],false);
+
+        //for triplet classification
+        if (has_fourth_column) {
+            fscanf(f_kb, "%s", buf);
+            string s4 = buf;
+            if (s4.compare("true")==0) {
+                test.add_labeled_triplet(entity2id[s1],entity2id[s2],relation2id[s3],1,true);
+            } else {
+                test.add_labeled_triplet(entity2id[s1],entity2id[s2],relation2id[s3],0,true);
+            }
+        } else {
+            test.add(entity2id[s1],entity2id[s2],relation2id[s3],true);
+        }
     }
     fclose(f_kb2);
 }
@@ -331,8 +473,12 @@ int main(int argc,char**argv)
     else
     {
         version = argv[1];
-        prepare();
-        test.run();
+        //link prediction
+        //prepare(0);
+        //test.run();
+        //triplet classification
+        prepare(1);
+        test.run_triplet_classification();
     }
 }
 
