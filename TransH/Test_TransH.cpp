@@ -69,6 +69,8 @@ double cmp(pair<int,double> a, pair<int,double> b)
 
 class Test{
     vector<vector<double> > relation_vec,entity_vec;
+    //TransH
+    vector<vector<double> > A;
 
 
     vector<int> h,l,r;
@@ -112,7 +114,7 @@ public:
         return res;
     }
     double len;
-    double calc_sum(int e1,int e2,int rel)
+    /* double calc_sum(int e1,int e2,int rel)
     {
         double sum=0;
         if (L1_flag)
@@ -122,11 +124,30 @@ public:
         for (int ii=0; ii<n; ii++)
             sum+=-sqr(entity_vec[e2][ii]-entity_vec[e1][ii]-relation_vec[rel][ii]);
         return sum;
+    } */
+
+    //replaced by the version of TransH
+    double calc_sum(int e1,int e2,int rel)
+    {
+        double tmp1=0,tmp2=0;
+        for (int jj=0; jj<n; jj++)
+        {
+        	tmp1+=A[rel][jj]*entity_vec[e1][jj];
+            tmp2+=A[rel][jj]*entity_vec[e2][jj];
+        }
+
+        double sum=0;
+        for (int ii=0; ii<n; ii++)
+            sum+=fabs(entity_vec[e2][ii]-tmp2*A[rel][ii]-(entity_vec[e1][ii]-tmp1*A[rel][ii])-relation_vec[rel][ii]);
+        return sum;
     }
+
     void run()
     {
-        FILE* f1 = fopen(("relation2vec."+version).c_str(),"r");
-        FILE* f3 = fopen(("entity2vec."+version).c_str(),"r");
+        //TransH in corresponding to the Train_TransH.cpp
+        FILE* f1 = fopen(("relation2vec.txt"+version).c_str(),"r");
+        FILE* f2 = fopen(("A.txt"+version).c_str(), "r");
+        FILE* f3 = fopen(("entity2vec.txt"+version).c_str(),"r");
         cout<<relation_num<<' '<<entity_num<<endl;
         int relation_num_fb=relation_num;
         relation_vec.resize(relation_num_fb);
@@ -135,6 +156,13 @@ public:
             relation_vec[i].resize(n);
             for (int ii=0; ii<n; ii++)
                 fscanf(f1,"%lf",&relation_vec[i][ii]);
+        }
+        A.resize(relation_num_fb);
+        for (int i = 0; i < relation_num_fb; i++)
+        {
+            A[i].resize(n);
+            for (int ii = 0; ii < n; ii++)
+                fscanf(f1,"%lf",&A[i][ii]);
         }
         entity_vec.resize(entity_num);
         for (int i=0; i<entity_num;i++)
@@ -146,6 +174,7 @@ public:
             	cout<<"wrong_entity"<<i<<' '<<vec_len(entity_vec[i])<<endl;
         }
         fclose(f1);
+        fclose(f2);
         fclose(f3);
 		double lsum=0 ,lsum_filter= 0;
 		double rsum = 0,rsum_filter=0;
@@ -239,8 +268,10 @@ public:
 
     //for triplet classification
     void run_triplet_classification() {
-        FILE* f1 = fopen(("relation2vec."+version).c_str(),"r");
-        FILE* f3 = fopen(("entity2vec."+version).c_str(),"r");
+        //TransH in corresponding to the Train_TransH.cpp
+        FILE* f1 = fopen(("relation2vec.txt"+version).c_str(),"r");
+        FILE* f2 = fopen(("A.txt"+version).c_str(), "r");
+        FILE* f3 = fopen(("entity2vec.txt"+version).c_str(),"r");
         cout<<relation_num<<' '<<entity_num<<endl;
         int relation_num_fb=relation_num;
         relation_vec.resize(relation_num_fb);
@@ -249,6 +280,13 @@ public:
             relation_vec[i].resize(n);
             for (int ii=0; ii<n; ii++)
                 fscanf(f1,"%lf",&relation_vec[i][ii]);
+        }
+        A.resize(relation_num_fb);
+        for (int i = 0; i < relation_num_fb; i++)
+        {
+            A[i].resize(n);
+            for (int ii = 0; ii < n; ii++)
+                fscanf(f1,"%lf",&A[i][ii]);
         }
         entity_vec.resize(entity_num);
         for (int i=0; i<entity_num;i++)
@@ -260,8 +298,9 @@ public:
             	cout<<"wrong_entity"<<i<<' '<<vec_len(entity_vec[i])<<endl;
         }
         fclose(f1);
+        fclose(f2);
         fclose(f3);
-
+        
         //determine thresholds according to valid set
         map<int,vector<pair<int,double> > > a;
         map<int, double> classifier;
@@ -273,20 +312,19 @@ public:
                         int lb = fb_lb[testid];
 			double tmp = calc_sum(h,l,rel);
 
-                        a[rel].push_back(make_pair(lb, -tmp));
+                        a[rel].push_back(make_pair(lb, tmp));
         }
         for (map<int, vector<pair<int, double> > >::iterator it = a.begin(); it != a.end(); ++it) {
             int rel = it->first;
             vector<pair<int,double> >& value = it->second;
-            sort(value.begin(), value.end(), cmp);
+            sort(value.begin(), value.end(),cmp);
             int num_of_positive_triplets = 0;
             int num_of_triplets = value.size();
             for (vector<pair<int,double> >::iterator pair_it = value.begin(); pair_it != value.end(); ++pair_it) {
-                //cout << pair_it->first << " " << pair_it->second << " ";
-                if (pair_it->first)
+                if (pair_it->first) {
                     num_of_positive_triplets++;
+                }
             }
-            //cout << endl;
             double threshold = 0;
             int num_of_recalled_positive = 0;
             int num_of_correct = num_of_triplets - num_of_positive_triplets;
@@ -305,7 +343,6 @@ public:
                 }
             }
             classifier[rel] = threshold;
-            //cout << rel << "\t" << threshold << endl;
         }
 
         //classify test triplets by the thresholds
@@ -318,7 +355,7 @@ public:
                         int lb = fb_lb[testid];
 			double tmp = calc_sum(h,l,rel);
 
-                        a[rel].push_back(make_pair(lb, -tmp));
+                        a[rel].push_back(make_pair(lb, tmp));
         }
         int num_of_considered = 0;
         int num_of_correct = 0;
@@ -368,7 +405,7 @@ void prepare(int has_fourth_column)
     }
     FILE* f_kb = fopen(test_file_path.c_str(), "r");
     test.cardinality_of_testset = 0;
-    while (fscanf(f_kb,"%s",buf)==1)
+	while (fscanf(f_kb,"%s",buf)==1)
     {
         string s1=buf;
         fscanf(f_kb,"%s",buf);
@@ -501,6 +538,7 @@ int main(int argc,char**argv)
         cout<<"size = "<<n<<endl;
         cout<<"version = "<<version<<endl;
 
+        version = argv[1];
         //link prediction
         //prepare(0);
         //test.run();

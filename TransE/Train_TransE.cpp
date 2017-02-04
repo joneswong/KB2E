@@ -332,6 +332,8 @@ int main(int argc,char**argv)
     if ((i = ArgPos((char *)"-size", argc, argv)) > 0) n = atoi(argv[i + 1]);
     if ((i = ArgPos((char *)"-margin", argc, argv)) > 0) margin = atoi(argv[i + 1]);
     if ((i = ArgPos((char *)"-method", argc, argv)) > 0) method = atoi(argv[i + 1]);
+    if ((i = ArgPos((char *)"-rate", argc, argv)) > 0) rate = atof(argv[i + 1]);
+
     cout<<"size = "<<n<<endl;
     cout<<"learing rate = "<<rate<<endl;
     cout<<"margin = "<<margin<<endl;
